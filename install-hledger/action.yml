@@ -1,0 +1,69 @@
+name: 'Install hledger'
+description: 'Install hledger accounting tool using eget'
+author: 'arvesv'
+
+inputs:
+  version:
+    description: 'Version or tag of hledger to install (default: latest)'
+    required: false
+    default: 'latest'
+  token:
+    description: 'GitHub token to avoid rate limiting when downloading releases'
+    required: false
+    default: ${{ github.token }}
+  bin-dir:
+    description: 'Directory where the hledger binary should be placed'
+    required: false
+    default: '/usr/local/bin'
+
+outputs:
+  version:
+    description: 'Installed hledger version string'
+    value: ${{ steps.install-hledger.outputs.version }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install eget
+      id: install-eget
+      shell: bash
+      run: |
+        if ! command -v eget &> /dev/null; then
+          curl -o eget.sh https://zyedidia.github.io/eget.sh
+          bash eget.sh
+          if [ -w /usr/local/bin ]; then
+            mv eget /usr/local/bin/
+          else
+            sudo mv eget /usr/local/bin/
+          fi
+          rm -f eget.sh
+        fi
+
+    - name: Install hledger
+      id: install-hledger
+      shell: bash
+      env:
+        EGET_GITHUB_TOKEN: ${{ inputs.token }}
+      run: |
+        TAG_ARGS=()
+        if [ "${{ inputs.version }}" != "latest" ] && [ -n "${{ inputs.version }}" ]; then
+          TAG_ARGS=("--tag" "${{ inputs.version }}")
+        fi
+
+        DEST_DIR="${{ inputs.bin-dir }}"
+        mkdir -p "$DEST_DIR" 2>/dev/null || sudo mkdir -p "$DEST_DIR"
+
+        if [ -w "$DEST_DIR" ]; then
+          eget simonmichael/hledger "${TAG_ARGS[@]}" --to "$DEST_DIR"
+        else
+          sudo -E eget simonmichael/hledger "${TAG_ARGS[@]}" --to "$DEST_DIR"
+        fi
+
+        if [[ ":$PATH:" != *":$DEST_DIR:"* ]]; then
+          echo "$DEST_DIR" >> "$GITHUB_PATH"
+          export PATH="$DEST_DIR:$PATH"
+        fi
+
+        VERSION_OUTPUT=$(hledger --version)
+        echo "$VERSION_OUTPUT"
+        echo "version=$VERSION_OUTPUT" >> "$GITHUB_OUTPUT"

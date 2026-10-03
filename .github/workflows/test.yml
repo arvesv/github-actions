@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+jobs:
+  test-install-hledger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Test install-hledger (latest)
+        id: install-latest
+        uses: ./install-hledger
+
+      - name: Verify hledger binary
+        run: |
+          which hledger
+          hledger --version
+          test -n "${{ steps.install-latest.outputs.version }}"
+
+      - name: Test install-hledger (specific version)
+        id: install-specific
+        uses: ./install-hledger
+        with:
+          version: '1.40'
+
+      - name: Verify specific version
+        run: |
+          hledger --version
+          [[ "${{ steps.install-specific.outputs.version }}" == *"1.40"* ]]
