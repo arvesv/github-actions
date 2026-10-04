@@ -51,5 +51,5 @@ jobs:
       - name: Verify specific version
         run: |
           hledger --version
-          [[ "${{ steps.install-specific.outputs.version }}" == *"1.40"* ]]
+          echo "${{ steps.install-specific.outputs.version }}" | grep -q "1.40"
           test -x "${{ steps.install-specific.outputs.bin-path }}"
