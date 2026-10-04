@@ -1,0 +1,123 @@
+name: 'Create GitHub Release'
+description: 'Create a GitHub Release with optional asset uploads and automated release notes using GitHub CLI'
+author: 'arvesv'
+
+inputs:
+  tag:
+    description: 'Tag name for the release (e.g. v1.0.0). Defaults to github.ref_name when triggered by a tag.'
+    required: false
+    default: ''
+  title:
+    description: 'Release title. Defaults to tag name.'
+    required: false
+    default: ''
+  body:
+    description: 'Release notes body. If empty and generate-notes is true, notes will be auto-generated.'
+    required: false
+    default: ''
+  body-path:
+    description: 'Path to file containing release notes'
+    required: false
+    default: ''
+  generate-notes:
+    description: 'Automatically generate release notes using GitHub Release Notes API'
+    required: false
+    default: 'true'
+  draft:
+    description: 'Mark release as draft'
+    required: false
+    default: 'false'
+  prerelease:
+    description: 'Mark release as prerelease'
+    required: false
+    default: 'false'
+  latest:
+    description: 'Explicitly mark release as latest ("true", "false", or "auto")'
+    required: false
+    default: 'auto'
+  target:
+    description: 'Target branch or commit SHA for the release tag'
+    required: false
+    default: ''
+  files:
+    description: 'Asset files or glob patterns to upload to the release'
+    required: false
+    default: ''
+  token:
+    description: 'GitHub token with contents:write permission'
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  url:
+    description: 'URL of the created release'
+    value: ${{ steps.create-release.outputs.url }}
+  tag:
+    description: 'Tag name of the release'
+    value: ${{ steps.create-release.outputs.tag }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Create GitHub Release
+      id: create-release
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+      run: |
+        TAG="${{ inputs.tag }}"
+        if [ -z "$TAG" ]; then
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            TAG="${{ github.ref_name }}"
+          else
+            echo "::error::Release tag must be provided via input or by triggering from a git tag."
+            exit 1
+          fi
+        fi
+
+        ARGS=()
+
+        if [ -n "${{ inputs.title }}" ]; then
+          ARGS+=(--title "${{ inputs.title }}")
+        fi
+
+        if [ -n "${{ inputs.body }}" ]; then
+          ARGS+=(--notes "${{ inputs.body }}")
+        elif [ -n "${{ inputs.body-path }}" ]; then
+          ARGS+=(--notes-file "${{ inputs.body-path }}")
+        elif [ "${{ inputs.generate-notes }}" = "true" ]; then
+          ARGS+=(--generate-notes)
+        fi
+
+        if [ "${{ inputs.draft }}" = "true" ]; then
+          ARGS+=(--draft)
+        fi
+
+        if [ "${{ inputs.prerelease }}" = "true" ]; then
+          ARGS+=(--prerelease)
+        fi
+
+        if [ "${{ inputs.latest }}" = "true" ]; then
+          ARGS+=(--latest)
+        elif [ "${{ inputs.latest }}" = "false" ]; then
+          ARGS+=(--latest=false)
+        fi
+
+        if [ -n "${{ inputs.target }}" ]; then
+          ARGS+=(--target "${{ inputs.target }}")
+        fi
+
+        FILES_INPUT="${{ inputs.files }}"
+        if [ -n "$FILES_INPUT" ]; then
+          for f in $FILES_INPUT; do
+            if [ -e "$f" ]; then
+              ARGS+=("$f")
+            fi
+          done
+        fi
+
+        RELEASE_URL=$(gh release create "$TAG" "${ARGS[@]}")
+        echo "Release created: $RELEASE_URL"
+
+        echo "url=$RELEASE_URL" >> "$GITHUB_OUTPUT"
+        echo "tag=$TAG" >> "$GITHUB_OUTPUT"
