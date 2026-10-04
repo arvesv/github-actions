@@ -51,12 +51,14 @@ steps:
 | `version` | Version or tag of hledger to install (`latest` or release tag like `1.40`) | `latest` | No |
 | `token` | GitHub token for GitHub Release API access (avoids rate limiting) | `${{ github.token }}` | No |
 | `bin-dir` | Directory where the binary will be installed | `/usr/local/bin` | No |
+| `cache` | Cache downloaded hledger binary across workflow runs | `'true'` | No |
 
 ## Outputs
 
 | Output | Description |
 |---|---|
 | `version` | Installed hledger version output string |
+| `bin-path` | Absolute path to the installed hledger executable |
 
 ---
 

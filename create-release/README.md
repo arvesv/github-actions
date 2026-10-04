@@ -86,6 +86,7 @@ steps:
 | `latest` | Mark release as latest (`true`, `false`, or `auto`). | `'auto'` | No |
 | `target` | Target branch or commit SHA for the tag. | `""` | No |
 | `files` | Space- or newline-separated asset file paths or globs to upload. | `""` | No |
+| `allow-updates` | Update existing release and overwrite assets if the release already exists. | `'false'` | No |
 | `token` | GitHub token with `contents: write` permission. | `${{ github.token }}` | No |
 
 ## Outputs

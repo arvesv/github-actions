@@ -7,14 +7,30 @@ on:
     branches: [master, main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
-  test-install-hledger:
+  lint:
+    name: Lint Workflows & Actions
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
-      - name: Test install-hledger (latest)
+      - name: Run actionlint
+        run: |
+          bash <(curl -sL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+          ./actionlint -color
+
+  test-install-hledger:
+    name: Test install-hledger
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Test install-hledger (latest with cache)
         id: install-latest
         uses: ./install-hledger
 
@@ -23,14 +39,17 @@ jobs:
           which hledger
           hledger --version
           test -n "${{ steps.install-latest.outputs.version }}"
+          test -x "${{ steps.install-latest.outputs.bin-path }}"
 
       - name: Test install-hledger (specific version)
         id: install-specific
         uses: ./install-hledger
         with:
-          version: "1.40"
+          version: '1.40'
+          cache: 'false'
 
       - name: Verify specific version
         run: |
           hledger --version
           [[ "${{ steps.install-specific.outputs.version }}" == *"1.40"* ]]
+          test -x "${{ steps.install-specific.outputs.bin-path }}"

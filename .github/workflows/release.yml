@@ -4,16 +4,16 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Release version / tag (e.g. v1.0.0)"
+        description: 'Release version / tag (e.g. v1.0.0)'
         required: true
         type: string
       draft:
-        description: "Create draft release"
+        description: 'Create draft release'
         required: false
         type: boolean
         default: false
       prerelease:
-        description: "Create prerelease"
+        description: 'Create prerelease'
         required: false
         type: boolean
         default: false
@@ -27,7 +27,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
 
       - name: Create Release
         uses: ./create-release
@@ -37,3 +39,16 @@ jobs:
           draft: ${{ inputs.draft }}
           prerelease: ${{ inputs.prerelease }}
           generate-notes: true
+          allow-updates: true
+
+      - name: Update floating major version tag
+        if: ${{ startsWith(inputs.version, 'v') && !inputs.draft && !inputs.prerelease }}
+        run: |
+          MAJOR_TAG=$(echo "${{ inputs.version }}" | cut -d. -f1)
+          if [ -n "$MAJOR_TAG" ] && [ "$MAJOR_TAG" != "${{ inputs.version }}" ]; then
+            echo "Updating major tag $MAJOR_TAG to point to ${{ inputs.version }}..."
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git tag -fa "$MAJOR_TAG" -m "Release $MAJOR_TAG pointing to ${{ inputs.version }}"
+            git push origin "$MAJOR_TAG" --force
+          fi

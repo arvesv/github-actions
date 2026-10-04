@@ -2,6 +2,10 @@ name: 'Install hledger'
 description: 'Install hledger accounting tool using eget'
 author: 'arvesv'
 
+branding:
+  icon: 'download'
+  color: 'green'
+
 inputs:
   version:
     description: 'Version or tag of hledger to install (default: latest)'
@@ -15,16 +19,32 @@ inputs:
     description: 'Directory where the hledger binary should be placed'
     required: false
     default: '/usr/local/bin'
+  cache:
+    description: 'Cache downloaded hledger binary across workflow runs'
+    required: false
+    default: 'true'
 
 outputs:
   version:
     description: 'Installed hledger version string'
     value: ${{ steps.install-hledger.outputs.version }}
+  bin-path:
+    description: 'Absolute path to the installed hledger binary'
+    value: ${{ steps.install-hledger.outputs.bin-path }}
 
 runs:
   using: 'composite'
   steps:
+    - name: Cache hledger binary
+      if: inputs.cache == 'true'
+      id: cache-hledger
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+      with:
+        path: ${{ runner.temp }}/hledger-cache
+        key: hledger-${{ runner.os }}-${{ runner.arch }}-${{ inputs.version }}
+
     - name: Install eget
+      if: steps.cache-hledger.outputs.cache-hit != 'true'
       id: install-eget
       shell: bash
       run: |
@@ -45,18 +65,34 @@ runs:
       env:
         EGET_GITHUB_TOKEN: ${{ inputs.token }}
       run: |
-        TAG_ARGS=()
-        if [ "${{ inputs.version }}" != "latest" ] && [ -n "${{ inputs.version }}" ]; then
-          TAG_ARGS=("--tag" "${{ inputs.version }}")
-        fi
-
         DEST_DIR="${{ inputs.bin-dir }}"
         mkdir -p "$DEST_DIR" 2>/dev/null || sudo mkdir -p "$DEST_DIR"
 
-        if [ -w "$DEST_DIR" ]; then
-          eget simonmichael/hledger "${TAG_ARGS[@]}" --to "$DEST_DIR"
+        if [ "${{ steps.cache-hledger.outputs.cache-hit }}" = "true" ] && [ -f "${{ runner.temp }}/hledger-cache/hledger" ]; then
+          echo "Restoring hledger from cache..."
+          if [ -w "$DEST_DIR" ]; then
+            cp "${{ runner.temp }}/hledger-cache/hledger" "$DEST_DIR/"
+            chmod +x "$DEST_DIR/hledger"
+          else
+            sudo cp "${{ runner.temp }}/hledger-cache/hledger" "$DEST_DIR/"
+            sudo chmod +x "$DEST_DIR/hledger"
+          fi
         else
-          sudo -E eget simonmichael/hledger "${TAG_ARGS[@]}" --to "$DEST_DIR"
+          TAG_ARGS=()
+          if [ "${{ inputs.version }}" != "latest" ] && [ -n "${{ inputs.version }}" ]; then
+            TAG_ARGS=("--tag" "${{ inputs.version }}")
+          fi
+
+          if [ -w "$DEST_DIR" ]; then
+            eget simonmichael/hledger "${TAG_ARGS[@]}" --to "$DEST_DIR"
+          else
+            sudo -E eget simonmichael/hledger "${TAG_ARGS[@]}" --to "$DEST_DIR"
+          fi
+
+          if [ "${{ inputs.cache }}" = "true" ]; then
+            mkdir -p "${{ runner.temp }}/hledger-cache"
+            cp "$DEST_DIR/hledger" "${{ runner.temp }}/hledger-cache/" 2>/dev/null || sudo cp "$DEST_DIR/hledger" "${{ runner.temp }}/hledger-cache/"
+          fi
         fi
 
         if [[ ":$PATH:" != *":$DEST_DIR:"* ]]; then
@@ -64,6 +100,8 @@ runs:
           export PATH="$DEST_DIR:$PATH"
         fi
 
-        VERSION_OUTPUT=$(hledger --version)
+        BIN_PATH="$DEST_DIR/hledger"
+        VERSION_OUTPUT=$("$BIN_PATH" --version)
         echo "$VERSION_OUTPUT"
         echo "version=$VERSION_OUTPUT" >> "$GITHUB_OUTPUT"
+        echo "bin-path=$BIN_PATH" >> "$GITHUB_OUTPUT"

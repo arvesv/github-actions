@@ -2,6 +2,10 @@ name: 'Create GitHub Release'
 description: 'Create a GitHub Release with optional asset uploads and automated release notes using GitHub CLI'
 author: 'arvesv'
 
+branding:
+  icon: 'tag'
+  color: 'blue'
+
 inputs:
   tag:
     description: 'Tag name for the release (e.g. v1.0.0). Defaults to github.ref_name when triggered by a tag.'
@@ -43,6 +47,10 @@ inputs:
     description: 'Asset files or glob patterns to upload to the release'
     required: false
     default: ''
+  allow-updates:
+    description: 'Update existing release and overwrite assets if the release already exists'
+    required: false
+    default: 'false'
   token:
     description: 'GitHub token with contents:write permission'
     required: false
@@ -59,7 +67,7 @@ outputs:
 runs:
   using: 'composite'
   steps:
-    - name: Create GitHub Release
+    - name: Create or update GitHub Release
       id: create-release
       shell: bash
       env:
@@ -75,49 +83,92 @@ runs:
           fi
         fi
 
-        ARGS=()
-
-        if [ -n "${{ inputs.title }}" ]; then
-          ARGS+=(--title "${{ inputs.title }}")
-        fi
-
-        if [ -n "${{ inputs.body }}" ]; then
-          ARGS+=(--notes "${{ inputs.body }}")
-        elif [ -n "${{ inputs.body-path }}" ]; then
-          ARGS+=(--notes-file "${{ inputs.body-path }}")
-        elif [ "${{ inputs.generate-notes }}" = "true" ]; then
-          ARGS+=(--generate-notes)
-        fi
-
-        if [ "${{ inputs.draft }}" = "true" ]; then
-          ARGS+=(--draft)
-        fi
-
-        if [ "${{ inputs.prerelease }}" = "true" ]; then
-          ARGS+=(--prerelease)
-        fi
-
-        if [ "${{ inputs.latest }}" = "true" ]; then
-          ARGS+=(--latest)
-        elif [ "${{ inputs.latest }}" = "false" ]; then
-          ARGS+=(--latest=false)
-        fi
-
-        if [ -n "${{ inputs.target }}" ]; then
-          ARGS+=(--target "${{ inputs.target }}")
-        fi
-
+        # Collect asset files
+        ASSET_FILES=()
         FILES_INPUT="${{ inputs.files }}"
         if [ -n "$FILES_INPUT" ]; then
           for f in $FILES_INPUT; do
             if [ -e "$f" ]; then
-              ARGS+=("$f")
+              ASSET_FILES+=("$f")
             fi
           done
         fi
 
-        RELEASE_URL=$(gh release create "$TAG" "${ARGS[@]}")
-        echo "Release created: $RELEASE_URL"
+        EXISTS=false
+        if gh release view "$TAG" >/dev/null 2>&1; then
+          EXISTS=true
+        fi
 
+        if [ "$EXISTS" = "true" ] && [ "${{ inputs.allow-updates }}" = "true" ]; then
+          echo "Release '$TAG' already exists. Updating existing release..."
+          EDIT_ARGS=()
+          if [ -n "${{ inputs.title }}" ]; then
+            EDIT_ARGS+=(--title "${{ inputs.title }}")
+          fi
+          if [ -n "${{ inputs.body }}" ]; then
+            EDIT_ARGS+=(--notes "${{ inputs.body }}")
+          elif [ -n "${{ inputs.body-path }}" ]; then
+            EDIT_ARGS+=(--notes-file "${{ inputs.body-path }}")
+          fi
+          if [ "${{ inputs.draft }}" = "true" ]; then
+            EDIT_ARGS+=(--draft)
+          fi
+          if [ "${{ inputs.prerelease }}" = "true" ]; then
+            EDIT_ARGS+=(--prerelease)
+          fi
+          if [ "${{ inputs.latest }}" = "true" ]; then
+            EDIT_ARGS+=(--latest)
+          fi
+
+          if [ ${#EDIT_ARGS[@]} -gt 0 ]; then
+            gh release edit "$TAG" "${EDIT_ARGS[@]}"
+          fi
+
+          if [ ${#ASSET_FILES[@]} -gt 0 ]; then
+            gh release upload "$TAG" "${ASSET_FILES[@]}" --clobber
+          fi
+
+          RELEASE_URL=$(gh release view "$TAG" --json url -q .url)
+        else
+          ARGS=()
+
+          if [ -n "${{ inputs.title }}" ]; then
+            ARGS+=(--title "${{ inputs.title }}")
+          fi
+
+          if [ -n "${{ inputs.body }}" ]; then
+            ARGS+=(--notes "${{ inputs.body }}")
+          elif [ -n "${{ inputs.body-path }}" ]; then
+            ARGS+=(--notes-file "${{ inputs.body-path }}")
+          elif [ "${{ inputs.generate-notes }}" = "true" ]; then
+            ARGS+=(--generate-notes)
+          fi
+
+          if [ "${{ inputs.draft }}" = "true" ]; then
+            ARGS+=(--draft)
+          fi
+
+          if [ "${{ inputs.prerelease }}" = "true" ]; then
+            ARGS+=(--prerelease)
+          fi
+
+          if [ "${{ inputs.latest }}" = "true" ]; then
+            ARGS+=(--latest)
+          elif [ "${{ inputs.latest }}" = "false" ]; then
+            ARGS+=(--latest=false)
+          fi
+
+          if [ -n "${{ inputs.target }}" ]; then
+            ARGS+=(--target "${{ inputs.target }}")
+          fi
+
+          if [ ${#ASSET_FILES[@]} -gt 0 ]; then
+            ARGS+=("${ASSET_FILES[@]}")
+          fi
+
+          RELEASE_URL=$(gh release create "$TAG" "${ARGS[@]}")
+        fi
+
+        echo "Release ready at: $RELEASE_URL"
         echo "url=$RELEASE_URL" >> "$GITHUB_OUTPUT"
         echo "tag=$TAG" >> "$GITHUB_OUTPUT"
